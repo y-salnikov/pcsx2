@@ -422,16 +422,13 @@ void ps_blend(inout vec4 c, in float As)
 {
 #if PS_BLEND_A || PS_BLEND_B || PS_BLEND_D
 	vec4 rt = texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0);
-#if PS_DFMT == FMT_24
-	float Ad = 1.0f;
-#else
 	// FIXME FMT_16 case
 	// FIXME Ad or Ad * 2?
 	float Ad = rt.a * 255.0f / 128.0f;
-#endif
+
 	// Let the compiler do its jobs !
-	vec3 Cd = rt.rgb;
-	vec3 Cs = c.rgb;
+	vec3 Cd = rt.rgb * 255.0f;
+	vec3 Cs = c.rgb * 255.0f;
 
 #if PS_BLEND_A == 0
     vec3 A = Cs;
@@ -467,33 +464,36 @@ void ps_blend(inout vec4 c, in float As)
 
 #if PS_BLEND_A == PS_BLEND_B
     c.rgb = D;
+#elif PS_DFMT == FMT_24 && PS_BLEND_C == 1
+    c.rgb = A - B + D;
 #else
-    c.rgb = ((A - B) * C) + D;
+    // Note: you need to use floor for negative value
+    c.rgb = floor((A - B) * C + D);
 #endif
 
 	// FIXME dithering
-
-	// Correct the Color value based on the output format
-#if PS_COLCLIP != 3
-	// Standard Clamp
-	c.rgb = clamp(c.rgb, vec3(0.0f), vec3(1.0f));
-#endif
 
     // Warning: normally blending equation is mult(A, B) = A * B >> 7. GPU have the full accuracy
     // GS: Color = 1, Alpha = 255 => output 1
     // GPU: Color = 1/255, Alpha = 255/255 * 255/128 => output 1.9921875
 #if PS_DFMT == FMT_16
 	// In 16 bits format, only 5 bits of colors are used. It impacts shadows computation of Castlevania
-
-	// Basically we want to do 'c.rgb &= 0xF8' in denormalized mode
-	c.rgb = vec3(uvec3(c.rgb * 255.0f) & uvec3(0xF8)) / 255.0f;
-#elif PS_COLCLIP == 3
-	// Basically we want to do 'c.rgb &= 0xFF' in denormalized mode
-	c.rgb = vec3(uvec3(c.rgb * 255.0f) & uvec3(0xFF)) / 255.0f;
+#if PS_COLCLIP != 3
+	// Standard Clamp
+	c.rgb = clamp(c.rgb, vec3(0.0f), vec3(255.0f));
 #endif
 
-	// Don't compile => unable to find compatible overloaded function "mod(vec3)"
-	//c.rgb = mod((c.rgb * 255.0f) + 256.5f) / 255.0f;
+	// Basically we want to do 'c.rgb &= 0xF8' in denormalized mode
+	c.rgb = vec3(uvec3(c.rgb) & uvec3(0xF8)) / 255.0f;
+#elif PS_COLCLIP == 3
+	// Basically we want to do 'c.rgb &= 0xFF' in denormalized mode
+	c.rgb = vec3(uvec3(c.rgb) & uvec3(0xFF)) / 255.0f;
+#else
+
+	c.rgb = c.rgb / 255.0f;
+	c.rgb = clamp(c.rgb, vec3(0.0f), vec3(1.0f)); // Clamp between 0/1 can be optimized away (save 2 intructions !)
+#endif
+
 #endif
 }
 
