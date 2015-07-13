@@ -286,29 +286,39 @@ vec4 sample_color(vec2 st, float q)
 }
 
 #ifndef SUBROUTINE_GL40
-vec4 tfx(vec4 t, vec4 c)
+vec4 tfx(vec4 t, vec4 f)
 {
-	vec4 c_out = c;
+	vec4 c_out;
+#if (PS_TCC == 0)
+    c_out.a = f.a;
+#endif
+
+    vec4 FxT = trunc(f * t * 255.0f * 255.0f / 128.0f) / 255.0f;
+
 #if (PS_TFX == 0)
-	if(PS_TCC != 0)
-		c_out = c * t * 255.0f / 128.0f;
-	else
-		c_out.rgb = c.rgb * t.rgb * 255.0f / 128.0f;
+	if(PS_TCC == 1) {
+		c_out = FxT;
+    } else {
+		c_out.rgb = FxT.rgb;
+    }
 #elif (PS_TFX == 1)
-	if(PS_TCC != 0)
+	if(PS_TCC == 1) {
 		c_out = t;
-	else
+    } else {
 		c_out.rgb = t.rgb;
+    }
 #elif (PS_TFX == 2)
-	c_out.rgb = c.rgb * t.rgb * 255.0f / 128.0f + c.a;
+	c_out.rgb = FxT.rgb + f.a;
 
 	if(PS_TCC != 0)
-		c_out.a += t.a;
+		c_out.a = f.a + t.a;
 #elif (PS_TFX == 3)
-	c_out.rgb = c.rgb * t.rgb * 255.0f / 128.0f + c.a;
+	c_out.rgb = FxT.rgb + f.a;
 
 	if(PS_TCC != 0)
 		c_out.a = t.a;
+#else
+    c_out = f;
 #endif
 
 	return c_out;
@@ -370,8 +380,8 @@ vec4 ps_color()
 {
 	vec4 t = sample_color(PSin_t.xy, PSin_t.w);
 
-	vec4 zero = vec4(0.0f, 0.0f, 0.0f, 0.0f);
-	vec4 one = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	vec4 zero = vec4(0.0f);
+	vec4 one = vec4(1.0f);
 #ifdef TEX_COORD_DEBUG
 	vec4 c = clamp(t, zero, one);
 #else
