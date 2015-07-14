@@ -289,7 +289,7 @@ ivec4 sample_color(vec2 st, float q)
 ivec4 tfx(ivec4 T, vec4 f)
 {
 	ivec4 C;
-	ivec4 F = ivec4(f * 255.0f); // FIXME optimize the premult
+	ivec4 F = ivec4(f);
 
     ivec4 FxT = (F * T) >> 7;
 
@@ -540,7 +540,7 @@ void ps_main()
 #endif
 
 #if PS_SHUFFLE
-	// FIXME use integer TA in cb (save a MAD + a trunc)
+	// FIXME use integer TA in cb (it would save a MAD + a trunc)
 	ivec2 denorm_TA = ivec2(vec2(TA.xy) * 255.0f + 0.5f);
 
 	// Write RB part. Mask will take care of the correct destination
