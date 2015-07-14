@@ -69,8 +69,9 @@ layout(std140, binding = 21) uniform cb21
 	vec2 TA;
 	uvec4 MskFix;
 	ivec4 FbMask;
-	vec3 _not_yet_used;
-	float Af;
+	ivec2 denorm_TA;
+	int  _unused;
+	int  Af;
 	vec4 HalfTexel;
 	vec4 MinMax;
 	vec2 TC_OffsetHack;
@@ -269,6 +270,7 @@ ivec4 sample_color(vec2 st, float q)
 	// PERF: see the impact of the exansion before/after the interpolation
 	for (int i = 0; i < 4; i++)
 	{
+		// FIXME glsl 4.50 support a mix instruction to select a component
 #if ((PS_FMT & ~FMT_PAL) == FMT_24)
 		c[i].a = ( (PS_AEM == 0) || any(bvec3(c[i].rgb))  ) ? TA.x : 0.0f;
 #elif ((PS_FMT & ~FMT_PAL) == FMT_16)
@@ -445,8 +447,7 @@ void ps_blend(inout ivec4 Color)
 #elif PS_BLEND_C == 1
     int C = Ad;
 #else
-	// FIXME: use integer value directly
-    int C = int(Af * 128.0f + 0.1f);
+    int C = Af;
 #endif
 
 #if PS_BLEND_D == 0
@@ -540,9 +541,6 @@ void ps_main()
 #endif
 
 #if PS_SHUFFLE
-	// FIXME use integer TA in cb (it would save a MAD + a trunc)
-	ivec2 denorm_TA = ivec2(vec2(TA.xy) * 255.0f + 0.5f);
-
 	// Write RB part. Mask will take care of the correct destination
 #if PS_READ_BA
 	C.rb = C.bb;
@@ -552,15 +550,15 @@ void ps_main()
 
 	// Write GA part. Mask will take care of the correct destination
 #if PS_READ_BA
-	if (bool(C.a & 0x80))
-		C.ga = ivec2((C.a & 0x7F) | (denorm_TA.y & 0x80));
-	else
-		C.ga = ivec2((C.a & 0x7F) | (denorm_TA.x & 0x80));
+	// FIXME glsl 4.50 support a mix instruction to select a component
+	int my_TA = (bool(C.a & 0x80)) ? denorm_TA.y : denorm_TA.x;
+
+	C.ga = ivec2((C.a & 0x7F) | (my_TA & 0x80));
 #else
-	if (bool(C.g & 0x80))
-		C.ga = ivec2((C.g & 0x7F) | (denorm_TA.y & 0x80));
-	else
-		C.ga = ivec2((C.g & 0x7F) | (denorm_TA.x & 0x80));
+	// FIXME glsl 4.50 support a mix instruction to select a component
+	int my_TA = (bool(C.g & 0x80)) ? denorm_TA.y : denorm_TA.x;
+
+	C.ga = ivec2((C.g & 0x7F) | (my_TA & 0x80));
 #endif
 
 #endif

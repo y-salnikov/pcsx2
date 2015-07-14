@@ -254,6 +254,10 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 		ps_sel.shuffle = 1;
 		ps_sel.dfmt = 0;
 
+		// Texture shuffle use integer directly
+		ps_cb.TA_AlphaCoeff.x = env.TEXA.TA0;
+		ps_cb.TA_AlphaCoeff.y = env.TEXA.TA1;
+
 		const GIFRegXYOFFSET& o = m_context->XYOFFSET;
 		GSVertex* v = &m_vertex.buff[0];
 		size_t count = m_vertex.next;
@@ -410,6 +414,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 
 	GIFRegALPHA ALPHA = context->ALPHA;
 	float afix = (float)context->ALPHA.FIX / 0x80;
+	int Afix = context->ALPHA.FIX;
 
 	// Blend
 
@@ -448,6 +453,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 			// 24 bits no alpha channel so use 1.0f fix factor as equivalent
 			ALPHA.C = 2;
 			afix = 1.0f;
+			Afix = 128;
 		}
 		// Disable writing of the alpha channel
 		om_csel.wa = 0;
@@ -777,7 +783,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 	// Compute the blending equation to detect special case
 	int blend_sel    = ((om_bsel.a * 3 + om_bsel.b) * 3 + om_bsel.c) * 3 + om_bsel.d;
 	int bogus_blend  = GSDeviceOGL::m_blendMapD3D9[blend_sel].bogus;
-	bool all_sw = !( (ALPHA.A == ALPHA.B) || (ALPHA.C == 2 && afix <= 1.002f) ) && (m_accurate_blend > 1);
+	bool all_sw = !( (ALPHA.A == ALPHA.B) || (ALPHA.C == 2 && Afix <= 128) ) && (m_accurate_blend > 1);
 	bool sw_blending = (m_accurate_blend && (bogus_blend & A_MAX)) || acc_colclip_wrap || all_sw || ps_sel.fbmask;
 	// GL42 interact very badly with sw blending. GL42 uses the primitiveID to find the primitive
 	// that write the bad alpha value. Sw blending will force the draw to run primitive by primitive
@@ -798,7 +804,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 
 		// Require the fix alpha vlaue
 		if (ALPHA.C == 2) {
-			ps_cb.AlphaCoeff.a = afix;
+			ps_cb.TA_AlphaCoeff.a = Afix;
 		}
 
 		// No need to flush for every primitive

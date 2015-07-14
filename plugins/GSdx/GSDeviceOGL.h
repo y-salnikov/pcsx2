@@ -278,7 +278,7 @@ class GSDeviceOGL : public GSDevice
 		GSVector4 MinF_TA;
 		GSVector4i MskFix;
 		GSVector4i FbMask;
-		GSVector4 AlphaCoeff;
+		GSVector4i TA_AlphaCoeff;
 
 		GSVector4 HalfTexel;
 		GSVector4 MinMax;
@@ -292,7 +292,7 @@ class GSDeviceOGL : public GSDevice
 			MinMax        = GSVector4::zero();
 			MinF_TA       = GSVector4::zero();
 			MskFix        = GSVector4i::zero();
-			AlphaCoeff    = GSVector4::zero();
+			TA_AlphaCoeff = GSVector4i::zero();
 			TC_OffsetHack = GSVector4::zero();
 			FbMask        = GSVector4i::zero();
 		}
