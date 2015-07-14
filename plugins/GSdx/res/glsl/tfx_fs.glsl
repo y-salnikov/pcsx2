@@ -371,8 +371,7 @@ void colclip(inout ivec4 C)
 void fog(inout ivec4 C, float f)
 {
 #if PS_FOG != 0
-	// FIXME: use premult fog color
-	C.rgb = ivec3(mix(FogColor * 255.0f, vec3(C.rgb), f));
+	C.rgb = ivec3(mix(FogColor, vec3(C.rgb), f));
 #endif
 }
 
