@@ -68,7 +68,7 @@ layout(std140, binding = 21) uniform cb21
 	vec2 MinF;
 	vec2 TA;
 	uvec4 MskFix;
-	uvec4 FbMask;
+	ivec4 FbMask;
 	vec3 _not_yet_used;
 	float Af;
 	vec4 HalfTexel;
@@ -187,7 +187,7 @@ uvec4 sample_4_index(vec4 uv)
 	c.z = sample_c(uv.xw).a;
 	c.w = sample_c(uv.zw).a;
 
-	uvec4 i = uvec4(c * 255.0f + 0.5f); // Denormalize value
+	uvec4 i = uvec4(c * 255.0f + 0.1f); // Denormalize value
 
 #if PS_IFMT == 1
 	// 4HH
@@ -214,7 +214,7 @@ mat4 sample_4p(uvec4 u)
 	return c;
 }
 
-vec4 sample_color(vec2 st, float q)
+ivec4 sample_color(vec2 st, float q)
 {
 #if (PS_FST == 0)
 	st /= q;
@@ -282,216 +282,209 @@ vec4 sample_color(vec2 st, float q)
 	t = c[0];
 #endif
 
-	return t;
+	return ivec4(255.0f * t);
 }
 
 #ifndef SUBROUTINE_GL40
-vec4 tfx(vec4 t, vec4 f)
+ivec4 tfx(ivec4 T, vec4 f)
 {
-	vec4 c_out;
+	ivec4 C;
+	ivec4 F = ivec4(f * 255.0f); // FIXME optimize the premult
 #if (PS_TCC == 0)
-    c_out.a = f.a;
+    C.a = F.a;
 #endif
 
-    vec4 FxT = trunc(f * t * 255.0f * 255.0f / 128.0f) / 255.0f;
+    ivec4 FxT = (F * T) >> 7;
 
 #if (PS_TFX == 0)
 	if(PS_TCC == 1) {
-		c_out = FxT;
+		C = FxT;
     } else {
-		c_out.rgb = FxT.rgb;
+		C.rgb = FxT.rgb;
     }
 #elif (PS_TFX == 1)
 	if(PS_TCC == 1) {
-		c_out = t;
+		C = T;
     } else {
-		c_out.rgb = t.rgb;
+		C.rgb = T.rgb;
     }
 #elif (PS_TFX == 2)
-	c_out.rgb = FxT.rgb + f.a;
+	C.rgb = FxT.rgb + F.a;
 
 	if(PS_TCC != 0)
-		c_out.a = f.a + t.a;
+		C.a = F.a + T.a;
 #elif (PS_TFX == 3)
-	c_out.rgb = FxT.rgb + f.a;
+	C.rgb = FxT.rgb + F.a;
 
 	if(PS_TCC != 0)
-		c_out.a = t.a;
+		C.a = T.a;
 #else
-    c_out = f;
+    C = F;
 #endif
 
-	return c_out;
+	return clamp(C, 0, 255);
 }
 #endif
 
 #ifndef SUBROUTINE_GL40
-void atst(vec4 c)
+void atst(ivec4 C)
 {
-	float a = trunc(c.a * 255.0 + 0.01);
+	int A = C.a;
 
 #if (PS_ATST == 0) // never
 	discard;
 #elif (PS_ATST == 1) // always
 	// nothing to do
 #elif (PS_ATST == 2) // l
-	if ((AREF - a - 0.5f) < 0.0f)
+	if (A >= AREF)
 		discard;
 #elif (PS_ATST == 3 ) // le
-	if ((AREF - a + 0.5f) < 0.0f)
+	if (A > AREF)
 		discard;
 #elif (PS_ATST == 4) // e
-	if ((0.5f - abs(a - AREF)) < 0.0f)
+	if (A != AREF)
 		discard;
 #elif (PS_ATST == 5) // ge
-	if ((a-AREF + 0.5f) < 0.0f)
+	if (A < AREF)
 		discard;
 #elif (PS_ATST == 6) // g
-	if ((a-AREF - 0.5f) < 0.0f)
+	if (A <= AREF)
 		discard;
 #elif (PS_ATST == 7) // ne
-	if ((abs(a - AREF) - 0.5f) < 0.0f)
+	if (A == AREF)
 		discard;
 #endif
 }
 #endif
 
 #ifndef SUBROUTINE_GL40
-void colclip(inout vec4 c)
+void colclip(inout ivec4 C)
 {
 #if (PS_COLCLIP == 2)
-	c.rgb = 256.0f/255.0f - c.rgb;
+	C.rgb = 256 - C.rgb;
 #endif
 #if (PS_COLCLIP > 0)
-	bvec3 factor = lessThan(c.rgb, vec3(128.0f/255.0f));
-	c.rgb *= vec3(factor);
+	bvec3 factor = lessThan(C.rgb, ivec3(128));
+	C.rgb *= ivec3(factor);
 #endif
 }
 #endif
 
-void fog(inout vec4 c, float f)
+void fog(inout ivec4 C, float f)
 {
 #if PS_FOG != 0
-	c.rgb = mix(FogColor, c.rgb, f);
+	// FIXME: use premult fog color
+	C.rgb = ivec3(mix(FogColor * 255.0f, vec3(C.rgb), f));
 #endif
 }
 
-vec4 ps_color()
+ivec4 ps_color()
 {
-	vec4 t = sample_color(PSin_t.xy, PSin_t.w);
+	ivec4 t = sample_color(PSin_t.xy, PSin_t.w);
 
-	vec4 zero = vec4(0.0f);
-	vec4 one = vec4(1.0f);
 #ifdef TEX_COORD_DEBUG
-	vec4 c = clamp(t, zero, one);
+	vec4 C = clamp(t, ivec4(0), ivec4(255));
 #else
 #if PS_IIP == 1
-	vec4 c = clamp(tfx(t, PSin_c), zero, one);
+	ivec4 C = tfx(t, PSin_c);
 #else
-	vec4 c = clamp(tfx(t, PSin_fc), zero, one);
+	ivec4 C = tfx(t, PSin_fc);
 #endif
 #endif
 
-	atst(c);
+	atst(C);
 
-	fog(c, PSin_t.z);
+	fog(C, PSin_t.z);
 
 #if (PS_COLCLIP < 3)
-	colclip(c);
+	colclip(C);
 #endif
 
 #if (PS_CLR1 != 0) // needed for Cd * (As/Ad/F + 1) blending modes
-	c.rgb = vec3(1.0f, 1.0f, 1.0f);
+	C.rgb = ivec3(255);
 #endif
 
-	return c;
+	return C;
 }
 
-void ps_fbmask(inout vec4 c)
+void ps_fbmask(inout ivec4 C)
 {
 	// FIXME do I need special case for 16 bits
 #if PS_FBMASK
-	vec4 rt = texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0);
-	uvec4 denorm_rt = uvec4(rt * 255.0f + 0.5f);
-	uvec4 denorm_c = uvec4(c * 255.0f + 0.5f);
-	c = vec4((denorm_c & ~FbMask) | (denorm_rt & FbMask)) / 255.0f;
+	ivec4 RT = ivec4(texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0) * 255.0f + 0.1f);
+	C = (C & ~FbMask) | (RT & FbMask);
 #endif
 }
 
-void ps_blend(inout vec4 c, in float As)
+void ps_blend(inout ivec4 Color)
 {
 #if PS_BLEND_A || PS_BLEND_B || PS_BLEND_D
-	vec4 rt = texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0);
+	ivec4 RT = ivec4(texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0) * 255.0f + 0.1f);
 	// FIXME FMT_16 case
-	// FIXME Ad or Ad * 2?
-	float Ad = rt.a * 255.0f / 128.0f;
+	int Ad = RT.a;
 
 	// Let the compiler do its jobs !
-	vec3 Cd = rt.rgb * 255.0f;
-	vec3 Cs = c.rgb * 255.0f;
+	ivec3 Cd = RT.rgb;
+	ivec3 Cs = Color.rgb;
 
 #if PS_BLEND_A == 0
-    vec3 A = Cs;
+    ivec3 A = Cs;
 #elif PS_BLEND_A == 1
-    vec3 A = Cd;
+    ivec3 A = Cd;
 #else
-    vec3 A = vec3(0.0f);
+    ivec3 A = ivec3(0);
 #endif
 
 #if PS_BLEND_B == 0
-    vec3 B = Cs;
+    ivec3 B = Cs;
 #elif PS_BLEND_B == 1
-    vec3 B = Cd;
+    ivec3 B = Cd;
 #else
-    vec3 B = vec3(0.0f);
+    ivec3 B = ivec3(0);
 #endif
 
 #if PS_BLEND_C == 0
-    float C = As;
+    int C = Color.a;
 #elif PS_BLEND_C == 1
-    float C = Ad;
+    int C = Ad;
 #else
-    float C = Af;
+	// FIXME: use integer value directly
+    int C = int(Af * 128.0f + 0.1f);
 #endif
 
 #if PS_BLEND_D == 0
-    vec3 D = Cs;
+    ivec3 D = Cs;
 #elif PS_BLEND_D == 1
-    vec3 D = Cd;
+    ivec3 D = Cd;
 #else
-    vec3 D = vec3(0.0f);
+    ivec3 D = ivec3(0);
 #endif
 
 #if PS_BLEND_A == PS_BLEND_B
-    c.rgb = D;
+    Color.rgb = D;
 #elif PS_DFMT == FMT_24 && PS_BLEND_C == 1
-    c.rgb = A - B + D;
+    Color.rgb = A - B + D;
 #else
-    // Note: you need to use floor for negative value
-    c.rgb = floor((A - B) * C + D);
+    Color.rgb = (((A - B) * C) >> 7) + D;
 #endif
 
 	// FIXME dithering
+
+	// FIXME do I really need this clamping?
+#if PS_COLCLIP != 3
+	// Standard Clamp
+	Color.rgb = clamp(Color.rgb, ivec3(0), ivec3(255));
+#endif
+
 
     // Warning: normally blending equation is mult(A, B) = A * B >> 7. GPU have the full accuracy
     // GS: Color = 1, Alpha = 255 => output 1
     // GPU: Color = 1/255, Alpha = 255/255 * 255/128 => output 1.9921875
 #if PS_DFMT == FMT_16
 	// In 16 bits format, only 5 bits of colors are used. It impacts shadows computation of Castlevania
-#if PS_COLCLIP != 3
-	// Standard Clamp
-	c.rgb = clamp(c.rgb, vec3(0.0f), vec3(255.0f));
-#endif
-
-	// Basically we want to do 'c.rgb &= 0xF8' in denormalized mode
-	c.rgb = vec3(uvec3(c.rgb) & uvec3(0xF8)) / 255.0f;
+	Color.rgb &= 0xF8;
 #elif PS_COLCLIP == 3
-	// Basically we want to do 'c.rgb &= 0xFF' in denormalized mode
-	c.rgb = vec3(uvec3(c.rgb) & uvec3(0xFF)) / 255.0f;
-#else
-
-	c.rgb = c.rgb / 255.0f;
-	c.rgb = clamp(c.rgb, vec3(0.0f), vec3(1.0f)); // Clamp between 0/1 can be optimized away (save 2 intructions !)
+	Color.rgb &= 0xFF;
 #endif
 
 #endif
@@ -535,80 +528,79 @@ void ps_main()
 	}
 #endif
 
-	vec4 c = ps_color();
+	ivec4 C = ps_color();
 #if (APITRACE_DEBUG & 1) == 1
-	c.r = 1.0f;
+	C.r = 255;
 #endif
 #if (APITRACE_DEBUG & 2) == 2
-	c.g = 1.0f;
+	C.g = 255;
 #endif
 #if (APITRACE_DEBUG & 4) == 4
-	c.b = 1.0f;
+	C.b = 255;
 #endif
 #if (APITRACE_DEBUG & 8) == 8
-	c.a = 0.5f;
+	C.a = 128;
 #endif
 
 #if PS_SHUFFLE
-	uvec4 denorm_c = uvec4(c * 255.0f + 0.5f);
-	uvec2 denorm_TA = uvec2(vec2(TA.xy) * 255.0f + 0.5f);
+	// FIXME use integer TA in cb (save a MAD + a trunc)
+	ivec2 denorm_TA = ivec2(vec2(TA.xy) * 255.0f + 0.5f);
 
 	// Write RB part. Mask will take care of the correct destination
 #if PS_READ_BA
-	c.rb = c.bb;
+	C.rb = C.bb;
 #else
-	c.rb = c.rr;
+	C.rb = C.rr;
 #endif
 
 	// Write GA part. Mask will take care of the correct destination
 #if PS_READ_BA
-	if (bool(denorm_c.a & 0x80u))
-		c.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.y & 0x80u)) / 255.0f);
+	if (bool(C.a & 0x80))
+		C.ga = ivec2((C.a & 0x7F) | (denorm_TA.y & 0x80));
 	else
-		c.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.x & 0x80u)) / 255.0f);
+		C.ga = ivec2((C.a & 0x7F) | (denorm_TA.x & 0x80));
 #else
-	if (bool(denorm_c.g & 0x80u))
-		c.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.y & 0x80u)) / 255.0f);
+	if (bool(C.g & 0x80))
+		C.ga = ivec2((C.g & 0x7F) | (denorm_TA.y & 0x80));
 	else
-		c.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.x & 0x80u)) / 255.0f);
+		C.ga = ivec2((C.g & 0x7F) | (denorm_TA.x & 0x80));
 #endif
 
 #endif
 
 	// Must be done before alpha correction
-	float alpha_blend = c.a * 255.0f / 128.0f;
+	float alpha_blend = float(C.a) / 128.0f;
 
 	// Correct the ALPHA value based on the output format
 	// FIXME add support of alpha mask to replace properly PS_AOUT
 #if (PS_DFMT == FMT_16) || (PS_AOUT)
-	float a = 128.0f / 255.0; // alpha output will be 0x80
-	c.a = (PS_FBA != 0) ? a : step(0.5, c.a) * a;
+	C.a = (PS_FBA != 0) ? 0x80 : C.a & 0x80;
 #elif (PS_DFMT == FMT_32) && (PS_FBA != 0)
-	if(c.a < 0.5) c.a += 128.0f/255.0f;
+	C.a |= 0x80;
 #endif
 
 	// Get first primitive that will write a failling alpha value
 #if PS_DATE == 1 && !defined(DISABLE_GL42_image)
 	// DATM == 0
 	// Pixel with alpha equal to 1 will failed (128-255)
-	if (c.a > 127.5f / 255.0f) {
+	if (C.a > 127) {
 		imageAtomicMin(img_prim_min, ivec2(gl_FragCoord.xy), gl_PrimitiveID);
 		return;
 	}
 #elif PS_DATE == 2 && !defined(DISABLE_GL42_image)
 	// DATM == 1
 	// Pixel with alpha equal to 0 will failed (0-127)
-	if (c.a < 127.5f / 255.0f) {
+	if (C.a < 128) {
 		imageAtomicMin(img_prim_min, ivec2(gl_FragCoord.xy), gl_PrimitiveID);
 		return;
 	}
 #endif
 
-	ps_blend(c, alpha_blend);
+	ps_blend(C);
 
-	ps_fbmask(c);
+	ps_fbmask(C);
 
-	SV_Target0 = c;
+	SV_Target0 = vec4(C) / 255.0f;
 	SV_Target1 = vec4(alpha_blend);
 }
 
