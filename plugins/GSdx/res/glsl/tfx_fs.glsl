@@ -290,39 +290,37 @@ ivec4 tfx(ivec4 T, vec4 f)
 {
 	ivec4 C;
 	ivec4 F = ivec4(f * 255.0f); // FIXME optimize the premult
-#if (PS_TCC == 0)
-    C.a = F.a;
-#endif
 
     ivec4 FxT = (F * T) >> 7;
 
 #if (PS_TFX == 0)
-	if(PS_TCC == 1) {
-		C = FxT;
-    } else {
-		C.rgb = FxT.rgb;
-    }
+	C = FxT;
+	C = min(C, 255);
 #elif (PS_TFX == 1)
-	if(PS_TCC == 1) {
-		C = T;
-    } else {
-		C.rgb = T.rgb;
-    }
+	C = T;
 #elif (PS_TFX == 2)
 	C.rgb = FxT.rgb + F.a;
-
-	if(PS_TCC != 0)
-		C.a = F.a + T.a;
+	C.a = F.a + T.a;
+	C = min(C, 255);
 #elif (PS_TFX == 3)
 	C.rgb = FxT.rgb + F.a;
-
-	if(PS_TCC != 0)
-		C.a = T.a;
+	C.a = T.a;
+	C = min(C, 255);
 #else
     C = F;
 #endif
 
-	return clamp(C, 0, 255);
+#if (PS_TCC == 0)
+    C.a = F.a;
+#endif
+
+	// PERF note: integer clamp is typically implemented as a min/max
+	// Note1: in case of plain copy, it is useless, save 2 instructions
+	// Note2: color can only be positive, so a min is enough, save 1 instruction
+	// in bad case
+	//
+	//return clamp(C, 0, 255);
+	return C;
 }
 #endif
 
@@ -569,7 +567,9 @@ void ps_main()
 #endif
 
 	// Must be done before alpha correction
-	float alpha_blend = float(C.a) / 128.0f;
+	// PERF note: doing vec4 here allow to save a Int2Float instruction
+	// in basic case (i.e. not blend/mask/fba)
+	vec4 alpha_blend = vec4(C) / 128.0f;
 
 	// Correct the ALPHA value based on the output format
 	// FIXME add support of alpha mask to replace properly PS_AOUT
@@ -601,7 +601,7 @@ void ps_main()
 	ps_fbmask(C);
 
 	SV_Target0 = vec4(C) / 255.0f;
-	SV_Target1 = vec4(alpha_blend);
+	SV_Target1 = alpha_blend;
 }
 
 #endif
