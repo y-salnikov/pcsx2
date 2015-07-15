@@ -472,10 +472,14 @@ void ps_blend(inout ivec4 Color)
 
 	// FIXME dithering
 
-	// FIXME do I really need this clamping?
 #if PS_COLCLIP != 3
+#if PS_BLEND_B == 2
+	// Perf Note: No substraction, so value is positive (save 1 instructions)
+	Color.rgb = min(Color.rgb, ivec3(255));
+#else
 	// Standard Clamp
 	Color.rgb = clamp(Color.rgb, ivec3(0), ivec3(255));
+#endif
 #endif
 
 
