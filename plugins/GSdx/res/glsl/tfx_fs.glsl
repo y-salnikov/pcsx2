@@ -18,6 +18,8 @@
 // And I say this as an ATI user.
 #define ATI_SUCKS 0
 
+#define SW_BLEND (PS_BLEND_A || PS_BLEND_B || PS_BLEND_D)
+
 #ifdef FRAGMENT_SHADER
 
 in SHADER
@@ -33,7 +35,9 @@ in SHADER
 
 // Same buffer but 2 colors for dual source blending
 layout(location = 0, index = 0) out vec4 SV_Target0;
+#if !SW_BLEND
 layout(location = 0, index = 1) out vec4 SV_Target1;
+#endif
 
 #ifdef ENABLE_BINDLESS_TEX
 layout(bindless_sampler, location = 0) uniform sampler2D TextureSampler;
@@ -417,7 +421,7 @@ void ps_fbmask(inout ivec4 C)
 
 void ps_blend(inout ivec4 Color)
 {
-#if PS_BLEND_A || PS_BLEND_B || PS_BLEND_D
+#if SW_BLEND
 	ivec4 RT = ivec4(texelFetch(RtSampler, ivec2(gl_FragCoord.xy), 0) * 255.0f + 0.1f);
 	// FIXME FMT_16 case
 	int Ad = RT.a;
@@ -598,7 +602,9 @@ void ps_main()
 	ps_fbmask(C);
 
 	SV_Target0 = vec4(C) / 255.0f;
+#if !SW_BLEND
 	SV_Target1 = alpha_blend;
+#endif
 }
 
 #endif
